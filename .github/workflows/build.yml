@@ -21,6 +21,37 @@ jobs:
             flutter create --platforms=android --project-name drift --org com.earnpalsolutions .
           fi
 
+      - name: Enable core library desugaring (required by flutter_local_notifications)
+        run: |
+          python3 - << 'PY'
+          import pathlib
+
+          for name in ["android/app/build.gradle.kts", "android/app/build.gradle"]:
+              p = pathlib.Path(name)
+              if not p.exists():
+                  continue
+              content = p.read_text()
+              is_kts = name.endswith(".kts")
+
+              if "coreLibraryDesugaringEnabled" not in content and "isCoreLibraryDesugaringEnabled" not in content:
+                  flag = "        isCoreLibraryDesugaringEnabled = true" if is_kts else "        coreLibraryDesugaringEnabled true"
+                  content = content.replace("compileOptions {", "compileOptions {\n" + flag, 1)
+
+              if "desugar_jdk_libs" not in content:
+                  dep_line = (
+                      '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+                      if is_kts else
+                      "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n"
+                  )
+                  if "dependencies {" in content:
+                      content = content.replace("dependencies {", "dependencies {\n" + dep_line, 1)
+                  else:
+                      content += "\ndependencies {\n" + dep_line + "}\n"
+
+              p.write_text(content)
+              print(f"patched {name}")
+          PY
+
       - name: Install dependencies
         run: flutter pub get
 
