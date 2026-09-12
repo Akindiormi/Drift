@@ -118,6 +118,7 @@ Future<void> showCelebration(
   required String message,
   IconData icon = Icons.emoji_events_rounded,
   Color color = AppColors.gold,
+  int confettiCount = 90,
 }) async {
   final overlay = Overlay.of(context);
   late OverlayEntry entry;
@@ -127,6 +128,7 @@ Future<void> showCelebration(
       message: message,
       icon: icon,
       color: color,
+      confettiCount: confettiCount,
       onDone: () => entry.remove(),
     ),
   );
@@ -138,6 +140,7 @@ class _CelebrationCard extends StatefulWidget {
   final String message;
   final IconData icon;
   final Color color;
+  final int confettiCount;
   final VoidCallback onDone;
 
   const _CelebrationCard({
@@ -146,6 +149,7 @@ class _CelebrationCard extends StatefulWidget {
     required this.icon,
     required this.color,
     required this.onDone,
+    this.confettiCount = 90,
   });
 
   @override
@@ -182,7 +186,7 @@ class _CelebrationCardState extends State<_CelebrationCard>
         color: Colors.black.withValues(alpha: 0.35),
         child: Stack(
           children: [
-            const ConfettiBurst(),
+            ConfettiBurst(count: widget.confettiCount),
             Center(
               child: ScaleTransition(
                 scale: CurvedAnimation(parent: _c, curve: Curves.elasticOut),

@@ -18,6 +18,7 @@ class SleepService extends ChangeNotifier {
   static const _kBedtimeHour = 'drift_bedtime_hour';
   static const _kBedtimeMinute = 'drift_bedtime_minute';
   static const _kTotalLogs = 'drift_total_logs';
+  static const _kLogDates = 'drift_log_dates'; // list of yyyy-MM-dd, capped
 
   late SharedPreferences _prefs;
 
@@ -27,12 +28,26 @@ class SleepService extends ChangeNotifier {
   int _totalLogs = 0;
   int bedtimeHour = 22;
   int bedtimeMinute = 30;
+  final Set<String> _logDates = {};
+
+  /// True exactly once after a break is detected on app open — the UI should
+  /// show a soft "streak was reset" toast, then call [acknowledgeReset].
+  bool justReset = false;
 
   int get currentStreak => _streak;
   int get longestStreak => _longestStreak;
   int get totalLogs => _totalLogs;
 
   bool get hasLoggedToday => _lastLogDate == _todayKey();
+
+  /// Last 7 calendar days (oldest first), true where a log exists.
+  List<bool> get last7Days {
+    final now = DateTime.now();
+    return List.generate(7, (i) {
+      final day = now.subtract(Duration(days: 6 - i));
+      return _logDates.contains(_keyFor(day));
+    });
+  }
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -42,18 +57,24 @@ class SleepService extends ChangeNotifier {
     _totalLogs = _prefs.getInt(_kTotalLogs) ?? 0;
     bedtimeHour = _prefs.getInt(_kBedtimeHour) ?? 22;
     bedtimeMinute = _prefs.getInt(_kBedtimeMinute) ?? 30;
+    _logDates.addAll(_prefs.getStringList(_kLogDates) ?? const []);
 
     // If a day was missed entirely (not just "not yet today"), reset streak.
-    if (_lastLogDate != null && !hasLoggedToday) {
+    if (_lastLogDate != null && !hasLoggedToday && _streak > 0) {
       final last = DateTime.parse(_lastLogDate!);
-      final yesterday = DateTime.now().subtract(const Duration(days: 1));
-      final yKey = _keyFor(yesterday);
-      if (_keyFor(last) != yKey) {
+      final yesterdayKey = _keyFor(DateTime.now().subtract(const Duration(days: 1)));
+      if (_keyFor(last) != yesterdayKey) {
         _streak = 0;
+        justReset = true;
         await _prefs.setInt(_kStreak, 0);
       }
     }
     notifyListeners();
+  }
+
+  /// Call once the UI has shown the reset toast, so it doesn't show again.
+  void acknowledgeReset() {
+    justReset = false;
   }
 
   /// Logs tonight's sleep. Returns the new streak count, or null if already
@@ -72,11 +93,20 @@ class SleepService extends ChangeNotifier {
     if (_streak > _longestStreak) _longestStreak = _streak;
     _totalLogs += 1;
     _lastLogDate = today;
+    _logDates.add(today);
+    // Keep only the last 30 days on disk — the UI only ever needs 7.
+    if (_logDates.length > 30) {
+      final sorted = _logDates.toList()..sort();
+      _logDates
+        ..clear()
+        ..addAll(sorted.skip(sorted.length - 30));
+    }
 
     await _prefs.setInt(_kStreak, _streak);
     await _prefs.setInt(_kLongest, _longestStreak);
     await _prefs.setString(_kLastLogDate, _lastLogDate!);
     await _prefs.setInt(_kTotalLogs, _totalLogs);
+    await _prefs.setStringList(_kLogDates, _logDates.toList());
 
     notifyListeners();
     return _streak;
