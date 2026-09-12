@@ -63,3 +63,106 @@ jobs:
         with:
           name: drift-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Check for release signing secrets
+        id: signing
+        run: |
+          if [ -n "${{ secrets.DRIFT_KEYSTORE_BASE64 }}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write release keystore
+        if: steps.signing.outputs.available == 'true'
+        run: |
+          echo "${{ secrets.DRIFT_KEYSTORE_BASE64 }}" | base64 -d > android/app/drift-release.jks
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.DRIFT_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.DRIFT_KEY_PASSWORD }}
+          keyAlias=${{ secrets.DRIFT_KEY_ALIAS }}
+          storeFile=drift-release.jks
+          EOF
+
+      - name: Configure release signing in Gradle
+        if: steps.signing.outputs.available == 'true'
+        run: |
+          python3 - << 'PY'
+          import pathlib
+
+          for name in ["android/app/build.gradle.kts", "android/app/build.gradle"]:
+              p = pathlib.Path(name)
+              if not p.exists():
+                  continue
+              content = p.read_text()
+              is_kts = name.endswith(".kts")
+
+              if "keystoreProperties" not in content:
+                  if is_kts:
+                      header = (
+                          'import java.util.Properties\n'
+                          'import java.io.FileInputStream\n\n'
+                          'val keystoreProperties = Properties()\n'
+                          'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+                          'if (keystorePropertiesFile.exists()) {\n'
+                          '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
+                          '}\n\n'
+                      )
+                      content = header + content
+                      signing_block = (
+                          '    signingConfigs {\n'
+                          '        create("release") {\n'
+                          '            keyAlias = keystoreProperties["keyAlias"] as String?\n'
+                          '            keyPassword = keystoreProperties["keyPassword"] as String?\n'
+                          '            storeFile = keystoreProperties["storeFile"]?.let { file(it) }\n'
+                          '            storePassword = keystoreProperties["storePassword"] as String?\n'
+                          '        }\n'
+                          '    }\n'
+                      )
+                      content = content.replace("    buildTypes {", signing_block + "    buildTypes {", 1)
+                      content = content.replace(
+                          'signingConfig = signingConfigs.getByName("debug")',
+                          'signingConfig = signingConfigs.getByName("release")',
+                          1,
+                      )
+                  else:
+                      header = (
+                          'import java.util.Properties\n'
+                          "def keystoreProperties = new Properties()\n"
+                          "def keystorePropertiesFile = rootProject.file('key.properties')\n"
+                          "if (keystorePropertiesFile.exists()) {\n"
+                          "    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\n"
+                          "}\n\n"
+                      )
+                      content = header + content
+                      signing_block = (
+                          "    signingConfigs {\n"
+                          "        release {\n"
+                          "            keyAlias keystoreProperties['keyAlias']\n"
+                          "            keyPassword keystoreProperties['keyPassword']\n"
+                          "            storeFile file(keystoreProperties['storeFile'])\n"
+                          "            storePassword keystoreProperties['storePassword']\n"
+                          "        }\n"
+                          "    }\n"
+                      )
+                      content = content.replace("    buildTypes {", signing_block + "    buildTypes {", 1)
+                      content = content.replace(
+                          "signingConfig signingConfigs.debug",
+                          "signingConfig signingConfigs.release",
+                          1,
+                      )
+
+              p.write_text(content)
+              print(f"configured signing in {name}")
+          PY
+
+      - name: Build release AAB
+        if: steps.signing.outputs.available == 'true'
+        run: flutter build appbundle --release
+
+      - name: Upload AAB
+        if: steps.signing.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
