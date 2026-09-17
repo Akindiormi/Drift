@@ -50,24 +50,31 @@ class SleepService extends ChangeNotifier {
   }
 
   Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
-    _streak = _prefs.getInt(_kStreak) ?? 0;
-    _longestStreak = _prefs.getInt(_kLongest) ?? 0;
-    _lastLogDate = _prefs.getString(_kLastLogDate);
-    _totalLogs = _prefs.getInt(_kTotalLogs) ?? 0;
-    bedtimeHour = _prefs.getInt(_kBedtimeHour) ?? 22;
-    bedtimeMinute = _prefs.getInt(_kBedtimeMinute) ?? 30;
-    _logDates.addAll(_prefs.getStringList(_kLogDates) ?? const []);
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      _streak = _prefs.getInt(_kStreak) ?? 0;
+      _longestStreak = _prefs.getInt(_kLongest) ?? 0;
+      _lastLogDate = _prefs.getString(_kLastLogDate);
+      _totalLogs = _prefs.getInt(_kTotalLogs) ?? 0;
+      bedtimeHour = _prefs.getInt(_kBedtimeHour) ?? 22;
+      bedtimeMinute = _prefs.getInt(_kBedtimeMinute) ?? 30;
+      _logDates.addAll(_prefs.getStringList(_kLogDates) ?? const []);
 
-    // If a day was missed entirely (not just "not yet today"), reset streak.
-    if (_lastLogDate != null && !hasLoggedToday && _streak > 0) {
-      final last = DateTime.parse(_lastLogDate!);
-      final yesterdayKey = _keyFor(DateTime.now().subtract(const Duration(days: 1)));
-      if (_keyFor(last) != yesterdayKey) {
-        _streak = 0;
-        justReset = true;
-        await _prefs.setInt(_kStreak, 0);
+      // If a day was missed entirely (not just "not yet today"), reset streak.
+      if (_lastLogDate != null && !hasLoggedToday && _streak > 0) {
+        final last = DateTime.parse(_lastLogDate!);
+        final yesterdayKey = _keyFor(DateTime.now().subtract(const Duration(days: 1)));
+        if (_keyFor(last) != yesterdayKey) {
+          _streak = 0;
+          justReset = true;
+          await _prefs.setInt(_kStreak, 0);
+        }
       }
+    } catch (_) {
+      // Storage failed to load (corrupted prefs, full disk, etc). Fall back
+      // to a fresh in-memory session rather than leaving the app permanently
+      // blank — the tester can still use it tonight, worst case their
+      // streak just starts over instead of the app never opening at all.
     }
     notifyListeners();
   }

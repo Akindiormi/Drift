@@ -9,14 +9,22 @@ import 'screens/home_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SleepService.instance.init();
-  await NotificationService.instance.init();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       systemNavigationBarColor: Colors.transparent,
     ),
   );
+  // Show the home screen first — don't make the tester's first sight of the
+  // app be an OS permission popup. Ask afterwards, and actually schedule the
+  // default bedtime reminder once we know the answer, so the card on the
+  // home screen isn't showing a time that was never really scheduled.
   runApp(const DriftApp());
+  NotificationService.instance.init().then((_) {
+    final service = SleepService.instance;
+    NotificationService.instance
+        .scheduleBedtimeReminder(service.bedtimeHour, service.bedtimeMinute);
+  });
 }
 
 class DriftApp extends StatelessWidget {

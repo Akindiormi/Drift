@@ -111,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
           body: Stack(
             children: [
               SafeArea(
-                child: Padding(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      const Spacer(),
+                      const SizedBox(height: 28),
                       GlassCard(
                         onTap: _pickBedtime,
                         child: Row(
